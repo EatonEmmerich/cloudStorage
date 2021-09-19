@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/EatonEmmerich/cloudStorage/pkg/documents"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -76,11 +77,11 @@ func uploadDocument(dbc *sql.DB) http.HandlerFunc {
 		var documentIDs []int
 		var userID int64
 		for {
-			mp, err := mp.NextPart()
+			part, err := mp.NextPart()
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			documentID, err := documents.Upload(req.Context(), dbc, userID, mp)
+			documentID, err := documents.Upload(req.Context(), dbc, userID, part, part.Header.Get("Content-Type"), part.FileName())
 			if err != nil {
 				resp.WriteHeader(http.StatusInternalServerError)
 				resp.Write([]byte(err.Error()))
@@ -136,7 +137,7 @@ func updateDocument(dbc *sql.DB) http.HandlerFunc{
 		}
 
 		var userID int64
-		err = documents.Update(req.Context(), dbc, documentID, userID, part)
+		err = documents.Update(req.Context(), dbc, documentID, userID, part, part.Header.Get("Content-Type"), part.FileName())
 		if err != nil {
 			resp.WriteHeader(http.StatusInternalServerError)
 			resp.Write([]byte(err.Error()))
@@ -199,7 +200,7 @@ func getDocument(dbc *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		_, reader, err := documents.OpenDocument(req.Context(), dbc, documentID)
+		doc, reader, err := documents.OpenDocument(req.Context(), dbc, documentID)
 		if err != nil {
 			resp.WriteHeader(http.StatusInternalServerError)
 			resp.Write([]byte(err.Error()))
@@ -207,7 +208,8 @@ func getDocument(dbc *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		resp.Header().Set("Content-Type", "image/png")
+		resp.Header().Set("Content-Disposition", "attachment; filename=\""+html.EscapeString(doc.FileName)+"\"")
+		resp.Header().Set("Content-Type", doc.MediaType)
 		_, err = io.Copy(resp, reader)
 		if err != nil {
 			resp.WriteHeader(http.StatusInternalServerError)
