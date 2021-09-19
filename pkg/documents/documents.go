@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/EatonEmmerich/cloudStorage/pkg/access_control"
 	"io"
 	"os"
 	"path"
@@ -44,6 +45,13 @@ func Update(ctx context.Context, dbc *sql.DB, documentID int64, userID int64, re
 	doc, err := get(ctx, dbc, documentID)
 	if err != nil {
 		return err
+	}
+
+	if doc.Owner != userID {
+		err := access_control.AuthoriseOrError(ctx, dbc, userID, documentID, access_control.WRITE)
+		if err != nil {
+			return err
+		}
 	}
 
 	if doc.Version == 0 {
@@ -149,7 +157,7 @@ func replace(ctx context.Context, dbc *sql.DB, oldPath string, size int64, docum
 }
 
 func ListDocuments(ctx context.Context, dbc *sql.DB, userID int64) ([]Document, error) {
-	rows, err := dbc.QueryContext(ctx, "select id, owner, path, version, size  from documents where `owner` = ?", userID)
+	rows, err := dbc.QueryContext(ctx, "select id, owner, path, version, size, media_type, file_name  from documents where `owner` = ?", userID)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +165,7 @@ func ListDocuments(ctx context.Context, dbc *sql.DB, userID int64) ([]Document, 
 	var documents []Document
 	for rows.Next() {
 		var doc Document
-		err = rows.Scan(&doc.ID, &doc.Owner, &doc.Path, &doc.Version, &doc.Size)
+		err = rows.Scan(&doc.ID, &doc.Owner, &doc.Path, &doc.Version, &doc.Size, &doc.MediaType, &doc.FileName)
 		if err != nil {
 			return nil, err
 		}
@@ -166,10 +174,17 @@ func ListDocuments(ctx context.Context, dbc *sql.DB, userID int64) ([]Document, 
 	return documents, nil
 }
 
-func OpenDocument(ctx context.Context, dbc *sql.DB, documentID int64) (Document, io.Reader, error){
+func OpenDocument(ctx context.Context, dbc *sql.DB, documentID int64, userID int64) (Document, io.Reader, error){
 	doc, err := get(ctx, dbc, documentID)
 	if err != nil {
 		return Document{}, nil, err
+	}
+
+	if doc.Owner != userID {
+		err = access_control.AuthoriseOrError(ctx, dbc, userID, documentID, access_control.READ)
+		if err != nil {
+			return Document{}, nil, err
+		}
 	}
 
 	file, err := os.Open(doc.Path)

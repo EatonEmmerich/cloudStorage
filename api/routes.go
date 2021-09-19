@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/EatonEmmerich/cloudStorage/pkg/access_control"
 	"github.com/EatonEmmerich/cloudStorage/pkg/documents"
 	"github.com/EatonEmmerich/cloudStorage/pkg/users"
 	"github.com/EatonEmmerich/cloudStorage/pkg/users/authentication"
@@ -106,10 +107,16 @@ func registerUser(dbc *sql.DB) http.HandlerFunc {
 }
 
 func respondError(resp http.ResponseWriter, err error) {
-	resp.WriteHeader(http.StatusBadRequest)
+	if errors.Is(err, access_control.ErrAccessDenied){
+		resp.WriteHeader(http.StatusUnauthorized)
+	} else {
+		resp.WriteHeader(http.StatusBadRequest)
+	}
 	log.Default().Println(err)
 	_, respErr := io.WriteString(resp, err.Error())
-	log.Default().Println(respErr)
+	if respErr != nil {
+		log.Default().Println(respErr)
+	}
 }
 
 // Read file from multipart body and store as authenticated user's document
@@ -147,7 +154,6 @@ func uploadDocument(dbc *sql.DB) authorisedHandler {
 			respondError(resp, err)
 			return
 		}
-		resp.WriteHeader(http.StatusOK)
 	}
 }
 
@@ -188,7 +194,6 @@ func updateDocument(dbc *sql.DB) authorisedHandler {
 			respondError(resp, err)
 			return
 		}
-		resp.WriteHeader(http.StatusOK)
 	}
 }
 
@@ -240,7 +245,7 @@ func getDocument(dbc *sql.DB) authorisedHandler {
 			return
 		}
 
-		doc, reader, err := documents.OpenDocument(req.Context(), dbc, documentID)
+		doc, reader, err := documents.OpenDocument(req.Context(), dbc, documentID, userID)
 		if err != nil {
 			respondError(resp, err)
 			return

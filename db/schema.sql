@@ -35,11 +35,12 @@ create table if not exists `audit_log` (
 
 create table if not exists `permissions` (
     `id` int not null auto_increment,
-    `document_id` int not null,
-    `user_id` int not null,
-    `pemissions` int not null,
+    `document` int not null,
+    `user` int not null,
+    `permissions` int not null,
 
     primary key (`id`),
-    foreign key (`document_id`) references `users`(`id`),
-    foreign key (`user_id`) references `users`(`id`)
+    foreign key (`document`) references `users`(`id`),
+    foreign key (`user`) references `users`(`id`),
+    index (`user`, `document`)
 );
