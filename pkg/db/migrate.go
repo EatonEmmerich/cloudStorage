@@ -9,7 +9,7 @@ import (
 //go:embed schema.sql
 var schema string
 
-func SetupSchema(ctx context.Context) (error) {
+func SetupSchema(ctx context.Context) error {
 	dbc,err := sql.Open("mysql", (*user) + ":" + (*password) + "@/" + (*database)+"?multiStatements=true")
 	if err != nil {
 		return err

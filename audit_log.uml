@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Diagram>
+  <ID>DATABASE</ID>
+  <OriginalElement>426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.audit_log</OriginalElement>
+  <nodes>
+    <node x="67.875" y="253.27397934087548">426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.permissions</node>
+    <node x="15.375" y="-135.26807673389078">426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.users</node>
+    <node x="20.625" y="482.5">426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.audit_log</node>
+    <node x="441.0583428977428" y="267.0">426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.documents</node>
+  </nodes>
+  <notes />
+  <edges>
+    <edge source="426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.audit_log" target="426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.users" relationship="REFERENCES">
+      <point x="-39.86296600281412" y="-61.42151673467521" />
+      <point x="52.26203399718588" y="456.0" />
+      <point x="52.87499999999997" y="456.0" />
+      <point x="52.87499999999997" y="143.9082914305978" />
+      <point x="52.875" y="143.9082914305978" />
+      <point x="-37.5" y="94.5" />
+    </edge>
+    <edge source="426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.permissions" target="426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.documents" relationship="REFERENCES">
+      <point x="-30.0" y="-61.5" />
+      <point x="97.875" y="324.0215338117081" />
+      <point x="127.875" y="324.0215338117081" />
+      <point x="127.875" y="456.0" />
+      <point x="0.0" y="94.5" />
+    </edge>
+    <edge source="426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.documents" target="426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.users" relationship="REFERENCES">
+      <point x="0.0" y="-94.5" />
+      <point x="523.5583428977428" y="219.83767830791936" />
+      <point x="127.875" y="219.83767830791936" />
+      <point x="37.5" y="94.5" />
+    </edge>
+    <edge source="426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.permissions" target="426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.users" relationship="REFERENCES">
+      <point x="-36.26225277113679" y="-56.50267758071544" />
+      <point x="91.61274722886321" y="394.76908828254074" />
+      <point x="52.875" y="394.76908828254074" />
+      <point x="-37.5" y="94.5" />
+    </edge>
+    <edge source="426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.audit_log" target="426ecb16-226d-4d85-aae3-df5008c30cba.TABLE:cloudStorage.documents" relationship="REFERENCES">
+      <point x="35.75" y="-61.0" />
+      <point x="127.875" y="456.0" />
+      <point x="0.0" y="94.5" />
+    </edge>
+  </edges>
+  <settings layout="Hierarchic" zoom="0.8132" showDependencies="false" x="103.29499021951744" y="290.24375626089784" />
+  <SelectedNodes />
+  <Categories>
+    <Category>Columns</Category>
+    <Category>Comments</Category>
+    <Category>Key columns</Category>
+    <Category>Virtual foreign keys</Category>
+  </Categories>
+</Diagram>
+
