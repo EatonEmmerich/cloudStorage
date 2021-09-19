@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"github.com/EatonEmmerich/cloudStorage/db"
+	"github.com/EatonEmmerich/cloudStorage/pkg/db"
 )
 
 func main() {

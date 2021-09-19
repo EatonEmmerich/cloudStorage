@@ -5,52 +5,51 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-)
-
-type PERM int
-const (
-	READ PERM = 1 << (32 - 1 - iota)
-	WRITE
+	"github.com/EatonEmmerich/cloudStorage/pkg/access_control/internal/db"
+	"github.com/EatonEmmerich/cloudStorage/pkg/access_control/models"
+	documentModels "github.com/EatonEmmerich/cloudStorage/pkg/documents/models"
 )
 
 var ErrAccessDenied = errors.New("access denied")
 
-func (p PERM)String() string {
-	switch p {
-	case READ:
-		return "Read access to document"
-	case WRITE:
-		return "Write access to document"
-	}
-	return "Unknown permission type"
-}
-
-func authorised(ctx context.Context, dbc *sql.DB, userID int64, documentID int64, requestType PERM) (bool, error) {
-	row :=  dbc.QueryRowContext(ctx, "select `permissions` from permissions where `user` = ? and `document` = ?", userID, documentID)
-	err := row.Err()
-	if err != nil {
-		return false, err
+func AuthoriseOrError(ctx context.Context, dbc *sql.DB, userID int64, doc documentModels.Document, permissions models.PERM) error {
+	if doc.Owner == userID {
+		return nil
 	}
 
-	var perm PERM
-	err = row.Scan(&perm)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	} else if err != nil {
-		return false, err
-	}
-	return (requestType & perm) == requestType, nil
-}
-
-func AuthoriseOrError(ctx context.Context, dbc *sql.DB, userID int64, documentID int64, requestType PERM) error {
-	ok, err := authorised(ctx, dbc, userID, documentID, requestType)
+	perms, err := db.GetPerms(ctx, dbc, userID, doc.ID)
 	if err != nil {
 		return err
 	}
 
-	if !ok {
-		Log(ctx, dbc, userID, documentID, requestType.String())
+	if (permissions & perms) != permissions {
+		err = db.Log(ctx, dbc, userID, doc.ID, "Access - Perm:" + permissions.String() + " - Unauthorised")
+		if err != nil {
+			return err
+		}
 		return fmt.Errorf("%w",ErrAccessDenied)
 	}
-	return nil
+	return db.Log(ctx, dbc, userID, doc.ID, "Access - Perm:" + permissions.String() +  " - Authorised")
+}
+
+func ShareDocument(ctx context.Context, dbc *sql.DB, doc documentModels.Document, userID int64, shareUserID int64, permissions models.PERM) error{
+	err := AuthoriseOrError(ctx, dbc, userID, doc, models.SHARE|permissions)
+	if err != nil {
+		return err
+	}
+
+	if doc.Owner == shareUserID {
+		return errors.New("can't share with owner")
+	}
+
+	err =  db.ShareDocument(ctx, dbc, doc.ID, shareUserID, permissions)
+	if err != nil {
+		return err
+	}
+
+	return db.Log(ctx, dbc, userID, doc.ID, "Share - Perm:" + permissions.String() + " - Authorised")
+}
+
+func SharedDocuments(ctx context.Context, dbc *sql.DB, userID int64) ([]int64, error) {
+	return db.ListSharedDocuments(ctx, dbc, userID)
 }

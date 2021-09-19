@@ -3,15 +3,17 @@ package documents
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"github.com/EatonEmmerich/cloudStorage/pkg/access_control"
+	models2 "github.com/EatonEmmerich/cloudStorage/pkg/access_control/models"
+	"github.com/EatonEmmerich/cloudStorage/pkg/documents/internal/db"
+	"github.com/EatonEmmerich/cloudStorage/pkg/documents/models"
 	"io"
 	"os"
 	"path"
 	"strconv"
 )
 
-func Upload(ctx context.Context, dbc *sql.DB, userID int64, reader io.Reader, mediaType string, filename string) (int, error) {
+func Upload(ctx context.Context, dbc *sql.DB, userID int64, reader io.ReadCloser, mediaType string, filename string) (int, error) {
 	// TODO: Ensure only new files created simultaneously in tempdir
 	documentID, err := new(ctx, dbc, userID)
 	if err != nil {
@@ -19,6 +21,11 @@ func Upload(ctx context.Context, dbc *sql.DB, userID int64, reader io.Reader, me
 	}
 
 	tempPath, writtenBytes, err := createTempFile(documentID, reader)
+	if err != nil {
+		return 0, err
+	}
+
+	err = reader.Close()
 	if err != nil {
 		return 0, err
 	}
@@ -40,18 +47,16 @@ func new(ctx context.Context, dbc *sql.DB, userID int64) (int64, error) {
 	return res.LastInsertId()
 }
 
-func Update(ctx context.Context, dbc *sql.DB, documentID int64, userID int64, reader io.Reader,mediaType string, filename string) error {
+func Update(ctx context.Context, dbc *sql.DB, documentID int64, userID int64, reader io.ReadCloser, mediaType string, filename string) error {
 	// TODO: Ensure only new files created simultaneously
-	doc, err := get(ctx, dbc, documentID)
+	doc, err := Get(ctx, dbc, documentID)
 	if err != nil {
 		return err
 	}
 
-	if doc.Owner != userID {
-		err := access_control.AuthoriseOrError(ctx, dbc, userID, documentID, access_control.WRITE)
-		if err != nil {
-			return err
-		}
+	err = access_control.AuthoriseOrError(ctx, dbc, userID, doc, models2.WRITE)
+	if err != nil {
+		return err
 	}
 
 	if doc.Version == 0 {
@@ -91,44 +96,17 @@ func createTempFile(documentID int64, reader io.Reader) (string, int64, error) {
 	return tempPath, writtenBytes, file.Close()
 }
 
-type Document struct {
-	ID    int64
-	Owner   int64
-	Path    string
-	Version int64
-	Size    int64
-	MediaType string
-	FileName string
-}
-
-type ContextQueryRow interface {
-	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
-}
-
-func get(ctx context.Context, dbc ContextQueryRow, documentID int64) (Document, error) {
-	row := dbc.QueryRowContext(ctx, "select id, owner, path, version, size, media_type, file_name  from documents where `id` = ?", documentID)
-	err := row.Err()
-	if err != nil {
-		return Document{}, err
-	}
-
-	var doc Document
-	err = row.Scan(&doc.ID, &doc.Owner, &doc.Path, &doc.Version, &doc.Size, &doc.MediaType, &doc.FileName)
-	if err != nil {
-		return Document{}, err
-	}
-
-	return doc, err
-}
-
 // Replace the existing file with the updated file in a thread safe manner.
 func replace(ctx context.Context, dbc *sql.DB, oldPath string, size int64, documentID int64, mediaType string, filename string) error {
 	tx, err := dbc.Begin()
 	if err != nil {
 		return err
 	}
+	defer func() {
+		err = tx.Commit()
+	}()
 
-	doc, err := get(ctx, tx, documentID)
+	doc, err := db.Get(ctx, tx, documentID)
 	if err != nil {
 		return err
 	}
@@ -139,54 +117,81 @@ func replace(ctx context.Context, dbc *sql.DB, oldPath string, size int64, docum
 		return err
 	}
 
-	res, err := dbc.ExecContext(ctx, "update `documents` set `path`=?, `version`=?, `size`=?, `media_type`=?, `file_name`=? where `id`=?",
-		newPath, doc.Version+1, size, mediaType, filename, documentID)
+	err = db.UpdateDocument(ctx, tx, newPath, size, documentID, doc.Version+1, mediaType, filename)
 	if err != nil {
 		return err
-	}
-
-	numberOfRows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if numberOfRows != 1 {
-		return fmt.Errorf("incorrect number of rows update, expected: 1, got:%d", numberOfRows)
 	}
 
 	return nil
 }
 
-func ListDocuments(ctx context.Context, dbc *sql.DB, userID int64) ([]Document, error) {
-	rows, err := dbc.QueryContext(ctx, "select id, owner, path, version, size, media_type, file_name  from documents where `owner` = ?", userID)
+func ListDocuments(ctx context.Context, dbc *sql.DB, userID int64) ([]models.Document, error) {
+	var documents []models.Document
+	dbDocuments, err := db.ListDocuments(ctx, dbc, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	var documents []Document
-	for rows.Next() {
-		var doc Document
-		err = rows.Scan(&doc.ID, &doc.Owner, &doc.Path, &doc.Version, &doc.Size, &doc.MediaType, &doc.FileName)
-		if err != nil {
-			return nil, err
-		}
-		documents = append(documents, doc)
+	for _, document := range dbDocuments {
+		documents = append(documents, models.Document{
+			ID:        document.ID,
+			Size:      document.Size,
+			MediaType: document.MediaType,
+			FileName:  document.FileName,
+		})
 	}
 	return documents, nil
 }
 
-func OpenDocument(ctx context.Context, dbc *sql.DB, documentID int64, userID int64) (Document, io.Reader, error){
-	doc, err := get(ctx, dbc, documentID)
+func ListSharedDocuments(ctx context.Context, dbc *sql.DB, userID int64) ([]models.Document, error) {
+	var documents []models.Document
+	sharedDocumentIDs, err := access_control.SharedDocuments(ctx, dbc, userID)
 	if err != nil {
-		return Document{}, nil, err
+		return nil, err
 	}
 
-	if doc.Owner != userID {
-		err = access_control.AuthoriseOrError(ctx, dbc, userID, documentID, access_control.READ)
+	for _, id := range sharedDocumentIDs {
+		document, err := Get(ctx, dbc, id)
 		if err != nil {
-			return Document{}, nil, err
+			return nil, err
 		}
+		documents = append(documents, document)
+	}
+	return documents, nil
+}
+
+func OpenDocument(ctx context.Context, dbc *sql.DB, documentID int64, userID int64) (models.Document, io.ReadCloser, error) {
+	doc, err := Get(ctx, dbc, documentID)
+	if err != nil {
+		return models.Document{}, nil, err
+	}
+
+	err = access_control.AuthoriseOrError(ctx, dbc, userID, doc, models2.READ)
+	if err != nil {
+		return models.Document{}, nil, err
 	}
 
 	file, err := os.Open(doc.Path)
-	return doc, file, err
+	return models.Document{
+		ID:        doc.ID,
+		Size:      doc.Size,
+		MediaType: doc.MediaType,
+		FileName:  doc.FileName,
+	}, file, err
+}
+
+func Get(ctx context.Context, dbc *sql.DB, documentID int64) (models.Document, error) {
+	doc, err := db.Get(ctx, dbc, documentID)
+	if err != nil {
+		return models.Document{}, err
+	}
+	return models.Document{
+		ID:        doc.ID,
+		Owner:     doc.Owner,
+		Path:      doc.Path,
+		Version:   doc.Version,
+		Size:      doc.Size,
+		MediaType: doc.MediaType,
+		FileName:  doc.FileName,
+	}, nil
 }

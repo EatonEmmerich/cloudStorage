@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/EatonEmmerich/cloudStorage/pkg/access_control"
+	"github.com/EatonEmmerich/cloudStorage/pkg/access_control/models"
 	"github.com/EatonEmmerich/cloudStorage/pkg/documents"
 	"github.com/EatonEmmerich/cloudStorage/pkg/users"
-	"github.com/EatonEmmerich/cloudStorage/pkg/users/authentication"
 	"html"
 	"io"
 	"log"
@@ -63,7 +63,7 @@ func basicAuth(dbc *sql.DB, next authorisedHandler) http.HandlerFunc {
 			resp.Header().Set("WWW-Authenticate", `Basic realm="restricted", charset="UTF-8"`)
 			http.Error(resp, "Unauthorized", http.StatusUnauthorized)
 		}
-		userID, err := authentication.BasicAuthentication(req.Context(), dbc, username, password)
+		userID, err := users.BasicAuthentication(req.Context(), dbc, username, password)
 		if err != nil {
 			respondError(resp, err)
 			return
@@ -78,8 +78,9 @@ func New(dbc *sql.DB) http.Server {
 	mux.HandleFunc("/upload", post(basicAuth(dbc, uploadDocument(dbc))))
 	mux.HandleFunc("/update", patch(basicAuth(dbc, updateDocument(dbc))))
 	mux.HandleFunc("/documents", get(basicAuth(dbc, listDocuments(dbc))))
+	mux.HandleFunc("/shared", get(basicAuth(dbc, getShared(dbc))))
 	mux.HandleFunc("/document", get(basicAuth(dbc, getDocument(dbc))))
-	//mux.HandleFunc("/")
+	mux.HandleFunc("/share", post(basicAuth(dbc, shareDocument(dbc))))
 
 	httpServer := http.Server{
 		Handler:  mux,
@@ -214,14 +215,13 @@ func listDocuments(dbc *sql.DB) authorisedHandler {
 			return
 		}
 
-		docsJson, err := json.Marshal(docs)
+		resp.WriteHeader(http.StatusOK)
+		encoder := json.NewEncoder(resp)
+		err = encoder.Encode(docs)
 		if err != nil {
 			respondError(resp, err)
 			return
 		}
-
-		resp.WriteHeader(http.StatusOK)
-		resp.Write(docsJson)
 	}
 }
 
@@ -254,6 +254,82 @@ func getDocument(dbc *sql.DB) authorisedHandler {
 		resp.Header().Set("Content-Disposition", "attachment; filename=\""+html.EscapeString(doc.FileName)+"\"")
 		resp.Header().Set("Content-Type", doc.MediaType)
 		_, err = io.Copy(resp, reader)
+		if err != nil {
+			respondError(resp, err)
+			return
+		}
+		err = reader.Close()
+		if err != nil {
+			respondError(resp, err)
+			return
+		}
+	}
+}
+
+func shareDocument(dbc *sql.DB) authorisedHandler {
+	return func(userID int64, resp http.ResponseWriter, req *http.Request) {
+		err := req.ParseForm()
+		if err != nil {
+			resp.WriteHeader(http.StatusBadRequest)
+			log.Default().Println(err)
+			_, respErr := io.WriteString(resp, err.Error())
+			log.Default().Println(respErr)
+			return
+		}
+
+		documentID, err := strconv.ParseInt(req.FormValue("document_id"), 10, 64)
+		if err != nil {
+			resp.WriteHeader(http.StatusBadRequest)
+			log.Default().Println(err)
+			_, respErr := io.WriteString(resp, err.Error())
+			log.Default().Println(respErr)
+			return
+		}
+
+		shareUserID, err := strconv.ParseInt(req.FormValue("share_user_id"), 10, 64)
+		if err != nil {
+			resp.WriteHeader(http.StatusBadRequest)
+			log.Default().Println(err)
+			_, respErr := io.WriteString(resp, err.Error())
+			log.Default().Println(respErr)
+			return
+		}
+
+		permInt, err := strconv.ParseInt(req.FormValue("permissions"), 10, 64)
+		if err != nil {
+			resp.WriteHeader(http.StatusBadRequest)
+			log.Default().Println(err)
+			_, respErr := io.WriteString(resp, err.Error())
+			log.Default().Println(respErr)
+			return
+		}
+
+		doc, err := documents.Get(req.Context(), dbc,documentID)
+		if err != nil {
+			respondError(resp, err)
+			return
+		}
+
+		err = access_control.ShareDocument(req.Context(), dbc, doc, userID, shareUserID, models.PERM(permInt))
+		if err != nil {
+			respondError(resp, err)
+			return
+		}
+
+		resp.WriteHeader(http.StatusOK)
+	}
+}
+
+func getShared(dbc *sql.DB) authorisedHandler {
+	return func(userID int64, resp http.ResponseWriter, req *http.Request) {
+		docs, err := documents.ListSharedDocuments(req.Context(), dbc, userID)
+		if err != nil{
+			respondError(resp, err)
+		}
+
+		resp.WriteHeader(http.StatusOK)
+		encoder := json.NewEncoder(resp)
+		err = encoder.Encode(docs)
 		if err != nil {
 			respondError(resp, err)
 			return

@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/EatonEmmerich/cloudStorage/api"
-	"github.com/EatonEmmerich/cloudStorage/db"
+	"github.com/EatonEmmerich/cloudStorage/pkg/api"
+	"github.com/EatonEmmerich/cloudStorage/pkg/db"
 	"net/http"
 )
 

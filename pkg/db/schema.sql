@@ -27,7 +27,8 @@ create table if not exists `documents` (
 create table if not exists `audit_log` (
     `user` int,
     `document` int,
-    `action` varchar(64),
+    `action` varchar(255),
+    `timestamp` datetime not null,
 
     foreign key (`user`) references `users`(`id`) ON DELETE SET NULL ,
     foreign key (`document`) references `documents`(`id`)  ON DELETE SET NULL
@@ -40,7 +41,8 @@ create table if not exists `permissions` (
     `permissions` int not null,
 
     primary key (`id`),
-    foreign key (`document`) references `users`(`id`),
+    foreign key (`document`) references `documents`(`id`),
     foreign key (`user`) references `users`(`id`),
-    index (`user`, `document`)
+    index `id_user_document` (`user`, `document`),
+    index (`user`)
 );

@@ -4,28 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/EatonEmmerich/cloudStorage/pkg/users/authentication"
 )
 
-type User struct  {
-	ID int64
-}
-
-func GetUserByUsername(ctx context.Context, dbc *sql.DB, username string) (User, error) {
-	row := dbc.QueryRowContext(ctx, "select `id` from users where `username` = ?", username)
-	err := row.Err()
-	if err != nil {
-		return User{},err
-	}
-
-	var user User
-	err = row.Scan(&user.ID)
-	if err != nil {
-		return User{},err
-	}
-
-	return  user, nil
-}
 
 func Register(ctx context.Context, dbc *sql.DB, username string ,password string) (int64, error){
 	res, err := dbc.ExecContext(ctx, "insert into users (`username`) values (?)", username)
@@ -44,5 +24,5 @@ func Register(ctx context.Context, dbc *sql.DB, username string ,password string
 		return 0, err
 	}
 
-	return userID, authentication.SetAuthorisation(ctx, dbc, password, userID)
+	return userID, SetAuthorisation(ctx, dbc, password, userID)
 }

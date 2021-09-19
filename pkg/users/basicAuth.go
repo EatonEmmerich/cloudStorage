@@ -1,4 +1,4 @@
-package authentication
+package users
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/EatonEmmerich/cloudStorage/pkg/users/internal/db"
 	"io"
 )
 
@@ -61,20 +62,7 @@ func SetAuthorisation(ctx context.Context, dbc *sql.DB, password string, userID 
 		return err
 	}
 
-	res, err := dbc.ExecContext(ctx, "update `users` set `salt`=?, `hash`=? where `id` = ?",
-		salt, base64.RawStdEncoding.EncodeToString(passwordHash.Sum(nil)), userID)
-	if err != nil {
-		return err
-	}
-
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if n != 1 {
-		return errors.New("unexpected number of rows updated")
-	}
+	db.SetAuthentication(ctx, dbc, userID,  base64.RawStdEncoding.EncodeToString(passwordHash.Sum(nil)), salt)
 
 	return nil
 }
