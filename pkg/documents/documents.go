@@ -3,7 +3,6 @@ package documents
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,7 +10,7 @@ import (
 	"strconv"
 )
 
-func Upload(ctx context.Context, dbc *sql.DB, userID int64, reader io.Reader) (int, error) {
+func Upload(ctx context.Context, dbc *sql.DB, userID int64, reader io.Reader, mediaType string, filename string) (int, error) {
 	// TODO: Ensure only new files created simultaneously in tempdir
 	documentID, err := new(ctx, dbc, userID)
 	if err != nil {
@@ -23,7 +22,7 @@ func Upload(ctx context.Context, dbc *sql.DB, userID int64, reader io.Reader) (i
 		return 0, err
 	}
 
-	err = replace(ctx, dbc, tempPath, writtenBytes, documentID)
+	err = replace(ctx, dbc, tempPath, writtenBytes, documentID, mediaType, filename)
 	if err != nil {
 		return 0, err
 	}
@@ -40,15 +39,15 @@ func new(ctx context.Context, dbc *sql.DB, userID int64) (int64, error) {
 	return res.LastInsertId()
 }
 
-func Update(ctx context.Context, dbc *sql.DB, documentID int64, userID int64, reader io.Reader) error {
+func Update(ctx context.Context, dbc *sql.DB, documentID int64, userID int64, reader io.Reader,mediaType string, filename string) error {
 	// TODO: Ensure only new files created simultaneously
 	doc, err := get(ctx, dbc, documentID)
 	if err != nil {
 		return err
 	}
 
-	if doc.version == 0 {
-		_, err = Upload(ctx, dbc, userID, reader)
+	if doc.Version == 0 {
+		_, err = Upload(ctx, dbc, userID, reader, mediaType, filename)
 		return err
 	}
 
@@ -57,7 +56,7 @@ func Update(ctx context.Context, dbc *sql.DB, documentID int64, userID int64, re
 		return err
 	}
 
-	return replace(ctx, dbc, tempPath, writtenBytes, documentID)
+	return replace(ctx, dbc, tempPath, writtenBytes, documentID, mediaType, filename)
 }
 
 var tempDir = mustMakeNewTemp()
@@ -84,43 +83,38 @@ func createTempFile(documentID int64, reader io.Reader) (string, int64, error) {
 	return tempPath, writtenBytes, file.Close()
 }
 
-type document struct {
-	id      int64
-	owner   int64
-	path    string
-	version int64
-	size    int64
+type Document struct {
+	ID    int64
+	Owner   int64
+	Path    string
+	Version int64
+	Size    int64
+	MediaType string
+	FileName string
 }
 
-type ContextQuery interface {
-	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+type ContextQueryRow interface {
+	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
-func get(ctx context.Context, dbc ContextQuery, documentID int64) (document, error) {
-	rows, err := dbc.QueryContext(ctx, "select id, owner, path, version, size  from documents where `id` = ?", documentID)
+func get(ctx context.Context, dbc ContextQueryRow, documentID int64) (Document, error) {
+	row := dbc.QueryRowContext(ctx, "select id, owner, path, version, size, media_type, file_name  from documents where `id` = ?", documentID)
+	err := row.Err()
 	if err != nil {
-		return document{}, err
+		return Document{}, err
 	}
 
-	if !rows.Next() {
-		return document{}, errors.New("document not found")
-	}
-
-	var doc document
-	err = rows.Scan(&doc.id, &doc.owner, &doc.path, &doc.version, &doc.size)
+	var doc Document
+	err = row.Scan(&doc.ID, &doc.Owner, &doc.Path, &doc.Version, &doc.Size, &doc.MediaType, &doc.FileName)
 	if err != nil {
-		return document{}, err
-	}
-
-	if rows.Next() {
-		return document{}, errors.New("multiple rows found")
+		return Document{}, err
 	}
 
 	return doc, err
 }
 
 // Replace the existing file with the updated file in a thread safe manner.
-func replace(ctx context.Context, dbc *sql.DB, oldPath string, size int64, documentID int64) error {
+func replace(ctx context.Context, dbc *sql.DB, oldPath string, size int64, documentID int64, mediaType string, filename string) error {
 	tx, err := dbc.Begin()
 	if err != nil {
 		return err
@@ -131,14 +125,14 @@ func replace(ctx context.Context, dbc *sql.DB, oldPath string, size int64, docum
 		return err
 	}
 
-	newPath := "files/" + strconv.FormatInt(documentID, 10) + "_v" + strconv.FormatInt(doc.version+1, 10)
+	newPath := "files/" + strconv.FormatInt(documentID, 10) + "_v" + strconv.FormatInt(doc.Version+1, 10)
 	err = os.Rename(oldPath, newPath)
 	if err != nil {
 		return err
 	}
 
-	res, err := dbc.ExecContext(ctx, "update `documents` set `path`=?, `version`=?, `size`=? where `id`=?",
-		newPath, doc.version+1, size, documentID)
+	res, err := dbc.ExecContext(ctx, "update `documents` set `path`=?, `version`=?, `size`=?, `media_type`=?, `file_name`=? where `id`=?",
+		newPath, doc.Version+1, size, mediaType, filename, documentID)
 	if err != nil {
 		return err
 	}
@@ -152,4 +146,32 @@ func replace(ctx context.Context, dbc *sql.DB, oldPath string, size int64, docum
 	}
 
 	return nil
+}
+
+func ListDocuments(ctx context.Context, dbc *sql.DB, userID int64) ([]Document, error) {
+	rows, err := dbc.QueryContext(ctx, "select id, owner, path, version, size  from documents where `owner` = ?", userID)
+	if err != nil {
+		return nil, err
+	}
+
+	var documents []Document
+	for rows.Next() {
+		var doc Document
+		err = rows.Scan(&doc.ID, &doc.Owner, &doc.Path, &doc.Version, &doc.Size)
+		if err != nil {
+			return nil, err
+		}
+		documents = append(documents, doc)
+	}
+	return documents, nil
+}
+
+func OpenDocument(ctx context.Context, dbc *sql.DB, documentID int64) (Document, io.Reader, error){
+	doc, err := get(ctx, dbc, documentID)
+	if err != nil {
+		return Document{}, nil, err
+	}
+
+	file, err := os.Open(doc.Path)
+	return doc, file, err
 }

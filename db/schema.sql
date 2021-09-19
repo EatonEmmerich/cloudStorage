@@ -13,6 +13,8 @@ create table if not exists `documents` (
     `path` varchar(255) default '' not null,
     `version` int default 0 not null,
     `size` int default 0 not null,
+    `media_type` varchar(255) default '' not null,
+    `file_name` varchar(255) default '' not null,
 
     primary key (`id`),
     foreign key (`owner`) references `users`(`id`)
