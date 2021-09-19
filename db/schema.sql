@@ -9,9 +9,10 @@ create table if not exists `users` (
 
 create table if not exists `documents` (
     `id` int not null auto_increment,
-    `owner` int,
-    `path` varchar(255),
-    `size` int,
+    `owner` int not null,
+    `path` varchar(255) default '' not null,
+    `version` int default 0 not null,
+    `size` int default 0 not null,
 
     primary key (`id`),
     foreign key (`owner`) references `users`(`id`)
@@ -22,6 +23,6 @@ create table if not exists `audit_log` (
     `document` int,
     `action` varchar(64),
 
-    foreign key (`user`) references `users`(`id`),
-    foreign key (`document`) references `documents`(`id`)
+    foreign key (`user`) references `users`(`id`) ON DELETE SET NULL ,
+    foreign key (`document`) references `documents`(`id`)  ON DELETE SET NULL
 );
