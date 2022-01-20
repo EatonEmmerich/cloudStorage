@@ -13,8 +13,21 @@ import (
 	"strconv"
 )
 
+var workPath string
+
+func init() {
+	var is bool
+	workPath, is = os.LookupEnv("CLOUD_STORAGE_WORKPATH")
+	if !is {
+		var err error
+		workPath, err = os.MkdirTemp("", "")
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
 func Upload(ctx context.Context, dbc *sql.DB, userID int64, reader io.ReadCloser, mediaType string, filename string) (int, error) {
-	// TODO: Ensure only new files created simultaneously in tempdir
 	documentID, err := new(ctx, dbc, userID)
 	if err != nil {
 		return 0, err
@@ -111,7 +124,8 @@ func replace(ctx context.Context, dbc *sql.DB, oldPath string, size int64, docum
 		return err
 	}
 
-	newPath := "files/" + strconv.FormatInt(documentID, 10) + "_v" + strconv.FormatInt(doc.Version+1, 10)
+	newPath := path.Join(workPath, strconv.FormatInt(documentID, 10)+"_v"+strconv.FormatInt(doc.Version+1, 10))
+	println(os.Getwd())
 	err = os.Rename(oldPath, newPath)
 	if err != nil {
 		return err

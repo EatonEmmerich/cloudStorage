@@ -12,8 +12,8 @@ var database = flag.String("database", "cloudStorage", "The name of the db to po
 var user = flag.String("user", "root", "The name of the db user for the app")
 var password = flag.String("password", "cloudStorage", "The password of the db user specified in 'user' parameter")
 
-func New() (*sql.DB,error) {
-	dbc,err := sql.Open("mysql", (*user) + ":" + (*password) + "@/" + (*database))
+func New() (*sql.DB, error) {
+	dbc, err := sql.Open("mysql", (*user)+":"+(*password)+"@/"+(*database))
 	if err != nil {
 		return nil, err
 	}
@@ -24,4 +24,3 @@ func New() (*sql.DB,error) {
 
 	return dbc, err
 }
-
